@@ -6,6 +6,7 @@ import aqt.webview
 
 PYCMD_IDENTIFIER = "vox"
 
+mw.addonManager.setWebExports(__name__, r"web.*")
 
 def on_reviewer_did_show_answer(_card):
     reviewer = mw.reviewer
@@ -31,7 +32,7 @@ def on_webview_did_receive_js_message(
 
     return (True, response)
 
-def on_webview_will_set_content(web_content: aqt.webview.WebContent, context: Any):
+def on_webview_will_set_content(web_content: aqt.webview.WebContent, context) -> None:
     addon_package = mw.addonManager.addonFromModule(__name__)
     web_content.js.append(f"/_addons/{addon_package}/web/index.js")
 
