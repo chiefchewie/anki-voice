@@ -1,12 +1,45 @@
+import queue
+import sys
+import threading
 from typing import Any
 
 import aqt.reviewer
-from aqt import gui_hooks, mw
 import aqt.webview
+import sounddevice as sd
+from aqt import gui_hooks, mw
 
-PYCMD_IDENTIFIER = "vox"
+from .mic import initialize_speech_recognition, producer
 
 mw.addonManager.setWebExports(__name__, r"web.*")
+
+mic_queue = queue.Queue()
+
+
+def callback(indata, frames, time, status):
+    """This is called (from a separate thread) for each audio block."""
+    if status:
+        print(status, file=sys.stderr)
+    mic_queue.put(bytes(indata))
+
+
+thread_pipeline = queue.Queue()
+thread_event = threading.Event()
+device, samplerate, recognizer = initialize_speech_recognition()
+
+stream = sd.RawInputStream(
+    samplerate=samplerate,
+    blocksize=8000,
+    device=device,
+    dtype="int16",
+    channels=1,
+)
+
+recog_thread = threading.Thread(
+    target=producer, args=(thread_pipeline, thread_event, stream, 8000, recognizer)
+)
+
+PYCMD_IDENTIFIER = "py"
+
 
 def on_reviewer_did_show_answer(_card):
     reviewer = mw.reviewer
@@ -32,14 +65,36 @@ def on_webview_did_receive_js_message(
 
     return (True, response)
 
+
 def on_webview_will_set_content(web_content: aqt.webview.WebContent, context) -> None:
     addon_package = mw.addonManager.addonFromModule(__name__)
     web_content.js.append(f"/_addons/{addon_package}/web/index.js")
 
+
+def on_profile_did_open():
+    print("main: speech thread starting")
+    stream.start()
+    thread_event.clear()
+    recog_thread.start()
+    print("main: speech thread started")
+    pass
+
+
+def on_profile_will_close():
+    print("main: speech thread ending")
+    stream.stop()
+    stream.close()
+    thread_event.set()
+    recog_thread.join()
+    print("main: speech thread ended")
+    pass
+
+
+gui_hooks.profile_did_open.append(on_profile_did_open)
+gui_hooks.profile_will_close.append(on_profile_will_close)
 gui_hooks.webview_will_set_content.append(on_webview_will_set_content)
 gui_hooks.reviewer_did_show_answer.append(on_reviewer_did_show_answer)
 gui_hooks.webview_did_receive_js_message.append(on_webview_did_receive_js_message)
-
 
 # https://github.com/glutanimate/speed-focus-mode/
 # automatically alert/show/again after x seconds
@@ -49,3 +104,15 @@ gui_hooks.webview_did_receive_js_message.append(on_webview_did_receive_js_messag
 # basic idea:
 # on_show_answer: from python hook, call a js function that sends a message (and also does the voice recognition)
 # on_receive_js_msg: filter for the js message, determine the command (show/answer) and run it
+
+
+# another idea:
+# it looks like support for speech recognition libraries in javascript are sparse
+#   does Anki support npm modules in their javascript files?
+#   it looks like passing cardInfo to run on javascript might not work
+#   or - use an npm project, and bundle it into raw js that gets exported to web/
+
+# instead: make the add-on launch some sort of daemon that interfaces with anki connect
+#   anki connect supports API calls such as answerCards or getCards
+#   we will still need the hooks - for example, on_show_answer sends some sort of message
+#   to the daemon so that the daemon knows what info to call anki-connect with

@@ -1,0 +1,44 @@
+from typing import Any
+
+import aqt.reviewer
+import aqt.webview
+from aqt import gui_hooks, mw
+
+mw.addonManager.setWebExports(__name__, r"web.*")
+
+PYCMD_IDENTIFIER = "py"
+
+
+def on_reviewer_did_show_answer(_card):
+    reviewer = mw.reviewer
+    reviewer.bottom.web.eval("testFunction()")
+
+
+def webview_message_handler(reviewer: aqt.reviewer.Reviewer, message: str):
+    print(f"!!! RECEIVED MESSAGE: {message}")
+    pass
+
+
+def on_webview_did_receive_js_message(
+    handled: tuple[bool, Any], message: str, context: Any
+):
+    if not isinstance(context, aqt.reviewer.ReviewerBottomBar):
+        return handled
+
+    if not message.startswith(PYCMD_IDENTIFIER):
+        return handled
+
+    reviewer = context.reviewer
+    response = webview_message_handler(reviewer, message)
+
+    return (True, response)
+
+
+def on_webview_will_set_content(web_content: aqt.webview.WebContent, context) -> None:
+    addon_package = mw.addonManager.addonFromModule(__name__)
+    web_content.js.append(f"/_addons/{addon_package}/web/index.js")
+
+
+gui_hooks.webview_will_set_content.append(on_webview_will_set_content)
+gui_hooks.reviewer_did_show_answer.append(on_reviewer_did_show_answer)
+gui_hooks.webview_did_receive_js_message.append(on_webview_did_receive_js_message)

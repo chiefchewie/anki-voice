@@ -7,4 +7,6 @@ requires-python = ">=3.9"
 dependencies = [
     "aqt[qt6]>=25.2",
     "mypy>=1.15.0",
+    "sounddevice>=0.5.1",
+    "vosk>=0.3.45",
 ]
