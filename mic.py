@@ -1,39 +1,35 @@
-# prerequisites: as described in https://alphacephei.com/vosk/install and also python module `sounddevice` (simply run command `pip install sounddevice`)
-# Example usage using Dutch (nl) recognition model: `python test_microphone.py -m nl`
-# For more help run: `python test_microphone.py -h`
-
 import json
-import queue
-import threading
 import time
-from typing import Literal, Union
 
-import aqt
-import aqt.utils
 import sounddevice as sd
 from vosk import KaldiRecognizer, Model
 
 
-def initialize_speech_recognition():
+def initialize():
     device = 1
     device_info = sd.query_devices(device, "input")
-
-    # # soundfile expects an int, sounddevice provides a float:
-    samplerate = int(device_info["default_samplerate"])  # type: ignore
-
+    samplerate = int(device_info["default_samplerate"])
     model = Model(model_path="model/vosk-model-small-en-us-0.15")
     recognizer = KaldiRecognizer(model, samplerate, '["again", "good", "show", "stop"]')
-    return (device, samplerate, recognizer)
+    stream = sd.RawInputStream(
+        samplerate=samplerate,
+        blocksize=8000,
+        device=device,
+        dtype="int16",
+        channels=1,
+    )
+    return (device, samplerate, recognizer, stream)
 
 
-def foobar(
+def voice_control(
     stream: sd.RawInputStream,
     blocksize: int,
     recognizer: KaldiRecognizer,
     card_kind: str,
 ):
+    timeout = 10
     start = time.time()
-    while time.time() - start < 10:
+    while (time.time() - start) < timeout:
         data, _ = stream.read(blocksize)
         if recognizer.AcceptWaveform(bytes(data)):
             result = recognizer.Result()
@@ -41,77 +37,9 @@ def foobar(
                 result = json.loads(result)["text"]
                 print(f"Speech recognizer: recognized text: {result}")
                 if card_kind == "reviewQuestion":
-                    if result == "show" or "stop":
+                    if result == "show" or result == "stop":
                         return result
                 elif card_kind == "reviewAnswer":
-                    if result == "good" or "again":
+                    if result == "good" or result == "again":
                         return result
-
-
-def producer(
-    event: threading.Event,
-    stream: sd.RawInputStream,
-    blocksize: int,
-    recognizer: KaldiRecognizer,
-    reviewer: aqt.reviewer.Reviewer,
-):
-    print("Speech recognizer: started listening")
-    while not event.is_set():
-        data, _ = stream.read(blocksize)
-        if recognizer.AcceptWaveform(bytes(data)):
-            result = recognizer.Result()
-            if result:
-                print(f"Speech recognizer: recognized text: {result}")
-                print("result", result)
-                # reviewer.bottom.web.eval(f"onSpeechRecognized('{result}')")
-
-
-def consumer(queue: queue.Queue, event: threading.Event):
-    """Pretend we're saving a number in the database."""
-    while not event.is_set() or not queue.empty():
-        message = queue.get(timeout=0.5)
-        print("Consumer storing message: %s (size=%d)", message, queue.qsize())
-        print("received msg", message)
-    print("Consumer received event. Exiting")
-
-
-# if __name__ == "__main__":
-#     mic_queue = queue.Queue()
-
-#     def callback(indata, frames, time, status):
-#         """This is called (from a separate thread) for each audio block."""
-#         if status:
-#             print(status, file=sys.stderr)
-#         mic_queue.put(bytes(indata))
-
-#     device, samplerate, recognizer = initialize_speech_recognition()
-#     print("Main: initialization complete")
-
-#     with sd.RawInputStream(
-#         samplerate=samplerate,
-#         blocksize=8000,
-#         device=device,
-#         dtype="int16",
-#         channels=1,
-#         callback=callback,
-#     ):
-#         pipeline = queue.Queue(maxsize=10)
-#         event = threading.Event()
-
-#         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-#             producer_future = executor.submit(producer, pipeline, event, recognizer)
-#             consumer_future = executor.submit(consumer, pipeline, event)
-
-#             input("Main: press enter to stop listening")
-#             print("Main: about to set event")
-#             event.set()
-
-#             done = False
-#             while not done:
-#                 done = True
-#                 if producer_future.running():
-#                     print("producer running")
-#                     done = False
-#                 if consumer_future.running():
-#                     print("consumer running")
-#                     done = False
+    return "timeout"
