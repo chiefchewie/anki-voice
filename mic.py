@@ -2,12 +2,14 @@
 # Example usage using Dutch (nl) recognition model: `python test_microphone.py -m nl`
 # For more help run: `python test_microphone.py -h`
 
-import concurrent
-import concurrent.futures
+import json
 import queue
-import sys
 import threading
+import time
+from typing import Literal, Union
 
+import aqt
+import aqt.utils
 import sounddevice as sd
 from vosk import KaldiRecognizer, Model
 
@@ -20,25 +22,49 @@ def initialize_speech_recognition():
     samplerate = int(device_info["default_samplerate"])  # type: ignore
 
     model = Model(model_path="model/vosk-model-small-en-us-0.15")
-    recognizer = KaldiRecognizer(model, samplerate)
+    recognizer = KaldiRecognizer(model, samplerate, '["again", "good", "show", "stop"]')
     return (device, samplerate, recognizer)
 
 
+def foobar(
+    stream: sd.RawInputStream,
+    blocksize: int,
+    recognizer: KaldiRecognizer,
+    card_kind: str,
+):
+    start = time.time()
+    while time.time() - start < 10:
+        data, _ = stream.read(blocksize)
+        if recognizer.AcceptWaveform(bytes(data)):
+            result = recognizer.Result()
+            if result:
+                result = json.loads(result)["text"]
+                print(f"Speech recognizer: recognized text: {result}")
+                if card_kind == "reviewQuestion":
+                    if result == "show" or "stop":
+                        return result
+                elif card_kind == "reviewAnswer":
+                    if result == "good" or "again":
+                        return result
+
+
 def producer(
-    queue: queue.Queue,
     event: threading.Event,
     stream: sd.RawInputStream,
     blocksize: int,
     recognizer: KaldiRecognizer,
+    reviewer: aqt.reviewer.Reviewer,
 ):
     print("Speech recognizer: started listening")
     while not event.is_set():
-        data, _overflowed = stream.read(blocksize)
+        data, _ = stream.read(blocksize)
         if recognizer.AcceptWaveform(bytes(data)):
             result = recognizer.Result()
-            print(f"Speech recognizer: recognized text: {result}")
-            print("result", result)
-            queue.put(result)
+            if result:
+                print(f"Speech recognizer: recognized text: {result}")
+                print("result", result)
+                # reviewer.bottom.web.eval(f"onSpeechRecognized('{result}')")
+
 
 def consumer(queue: queue.Queue, event: threading.Event):
     """Pretend we're saving a number in the database."""
