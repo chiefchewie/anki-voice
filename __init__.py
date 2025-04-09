@@ -1,15 +1,17 @@
-import aqt.webview
+import logging
 from aqt import gui_hooks, mw
 from aqt.operations import QueryOp
 
-from .mic import initialize, voice_control
+from .mic import get_vocabulary, initialize, voice_control
 
-device, samplerate, recognizer, stream = initialize()
+# set up logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
-
-def on_webview_will_set_content(web_content: aqt.webview.WebContent, context) -> None:
-    addon_package = mw.addonManager.addonFromModule(__name__)
-    web_content.js.append(f"/_addons/{addon_package}/web/index.js")
+# set up add-on
+config = mw.addonManager.getConfig(__name__)
+vocab = get_vocabulary(config)
+device, samplerate, recognizer, stream = initialize(vocab)
 
 
 def on_profile_did_open():
@@ -25,25 +27,27 @@ def on_profile_will_close():
 
 def on_success(op_val) -> None:
     print(f"on_success: op finished with return value {op_val}")
-    if op_val == "show":
+    if op_val == vocab.show:
         mw.reviewer._showAnswer()
-    elif op_val == "again":
+    elif op_val == vocab.again:
         mw.reviewer._answerCard(1)
-    elif op_val == "good":
+    elif op_val == vocab.good:
         mw.reviewer._answerCard(mw.reviewer._defaultEase())
 
 
 def on_card_will_show(text: str, card, kind: str):
+    voice_timeout = config.get("timeout", 10)
     op = QueryOp(
         parent=mw,
-        op=lambda _col: voice_control(stream, 8000, recognizer, kind),
+        op=lambda _col: voice_control(
+            stream, 8000, recognizer, kind, vocab, voice_timeout
+        ),
         success=on_success,
     )
-    op.with_progress('voice mode in progress... say "STOP" to stop').run_in_background()
+    op.with_progress("voice mode in progress... say 'STOP' to stop").run_in_background()
     return text
 
 
 gui_hooks.profile_did_open.append(on_profile_did_open)
 gui_hooks.profile_will_close.append(on_profile_will_close)
-gui_hooks.webview_will_set_content.append(on_webview_will_set_content)
 gui_hooks.card_will_show.append(on_card_will_show)
