@@ -51,7 +51,7 @@ def voice_control(
     recognizer: KaldiRecognizer,
     card_kind: str,
     vocab: AnkiCommandVocabulary,
-    timeout: float
+    timeout: float,
 ):
     start = time.time()
     while (time.time() - start) < timeout:

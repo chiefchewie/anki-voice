@@ -1,4 +1,11 @@
 import logging
+import os
+import sys
+
+# set up path to installed pip packages
+package_path = "lib"
+sys.path.append(os.path.join(os.path.abspath(__file__), package_path))
+
 from aqt import gui_hooks, mw
 from aqt.operations import QueryOp
 
@@ -16,17 +23,17 @@ device, samplerate, recognizer, stream = initialize(vocab)
 
 def on_profile_did_open():
     stream.start()
-    print("main: stream opened")
+    logger.info("main: stream opened")
 
 
 def on_profile_will_close():
     stream.stop()
     stream.close()
-    print("main: stream closed")
+    logger.info("main: stream closed")
 
 
 def on_success(op_val) -> None:
-    print(f"on_success: op finished with return value {op_val}")
+    logger.info(f"on_success: op finished with return value {op_val}")
     if op_val == vocab.show:
         mw.reviewer._showAnswer()
     elif op_val == vocab.again:
