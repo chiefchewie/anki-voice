@@ -11,4 +11,6 @@ installation:
 - launch anki
 
 warning!
-with my testing on windows, running this add-on will break audio and video in cards. by my estimate, it is because sounddevice (which is used to capture mic input) uses portaudio on the backend, and I guess that messes with the backend anki uses for audio and video playback
+with my testing on windows, running this add-on will break audio and video in cards (as in they will no longer play). 
+my theory is that sounddevice (which is used to capture mic input) uses portaudio on the backend, and I guess that messes with the backend anki uses for audio and video playback.
+most of my issues developing this has been portaudio being finnicky.
